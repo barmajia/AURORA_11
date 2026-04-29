@@ -99,9 +99,8 @@ class _SplashScreenState extends State<SplashScreen> with WidgetsBindingObserver
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final userStorage = Provider.of<UserStorage>(context, listen: false);
     
-    // Clear cached data when app is paused or stopped (app closed/minimized)
+    // Clear cached data when app is paused (app closed/minimized)
     if (state == AppLifecycleState.paused || 
-        state == AppLifecycleState.stopped ||
         state == AppLifecycleState.detached) {
       userStorage.clearCache();
     }

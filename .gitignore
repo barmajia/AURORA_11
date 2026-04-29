@@ -1,21 +1,14 @@
 ```
-# Flutter/Dart
-.dart_tool/
-.build/
-.packages
-flutter/ephemeral/
-*.iws
-*.iml
-*.ipr
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
-
 # Dependencies
+.dart_tool/
+.packages
 .pub/
+
+# Build outputs
 build/
+*.apk
+*.aab
+*.app
 
 # Environment
 .env
@@ -26,36 +19,17 @@ build/
 *.log
 **/logs
 
-# Coverage
-coverage/
-lcov.info
-
-# Android
-**/android/**/gradle-wrapper.properties
-**/android/.gradle
-**/android/build/
-**/android/app/build/
-
-# iOS
-**/ios/Pods/
-**/ios/.symlinks
-**/ios/build/
-**/ios/Podfile.lock
-
-# Web
-**/web/build/
-
-# Windows
-*.bat
-*.exe
-
-# Linux
-*.sh~
+# OS generated files
+.DS_Store
+Thumbs.db
 
 # IDE
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
-*~
+
+# Testing
+coverage/
+test/**/generated_*
 ```

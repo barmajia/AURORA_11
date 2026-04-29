@@ -16,6 +16,7 @@ import 'package:aurora/theme/theme_provider.dart';
 import 'package:aurora/locale/locale_provider.dart';
 import 'package:aurora/l10n/app_localizations.dart';
 import 'package:aurora/supabase/supabase_auth.dart';
+import 'package:aurora/supabase/supabase_config.dart';
 import 'package:aurora/users/account_type.dart';
 
 void main() async {
@@ -27,10 +28,8 @@ void main() async {
     await _requestLocationPermission();
   }
   
-  Supabase.initialize(
-    url: 'https://ofovfxsfazlwvcakpuer.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mb3ZmeHNmYXpsd3ZjYWtwdWVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxMjY0MDcsImV4cCI6MjA4NzcwMjQwN30.QYx8-c9IiSMpuHeikKz25MKO5o6g112AKj4Tnr4aWzI',
-  );
+  // Initialize Supabase
+  SupabaseConfig.initialize();
 
   runApp(
     MultiProvider(
@@ -105,21 +104,68 @@ class _SplashScreenState extends State<SplashScreen> {
     final currentUser = supabase.auth.currentUser;
 
     if (currentUser == null) {
+      // No authenticated user, go to welcome/login page
       if (mounted) {
         Navigator.of(context).pushReplacementNamed('/welcome');
       }
       return;
     }
 
+    // User is authenticated, check for stored account type and UUID
     final accountType = await Storage.getAccountType();
+    final storedUserId = await Storage.getUserId();
+    
+    // If we have account type in storage, use it; otherwise determine from profile
+    String? effectiveAccountType = accountType.isNotEmpty ? accountType : null;
+    
+    // Try to get account type from storage or determine it
+    if (effectiveAccountType == null || effectiveAccountType.isEmpty) {
+      // Check if user has seller profile
+      final sellerProfile = await SupabaseConfig.getSellerByUserId(currentUser.id);
+      if (sellerProfile != null) {
+        effectiveAccountType = 'seller';
+        await Storage.saveAccountType('seller');
+      } else {
+        // Check if user has factory profile
+        final factoryProfile = await SupabaseConfig.getFactoryByUserId(currentUser.id);
+        if (factoryProfile != null) {
+          effectiveAccountType = 'factory';
+          await Storage.saveAccountType('factory');
+        }
+      }
+    }
+
+    // Save user ID to storage
+    await Storage.saveUserId(currentUser.id);
+
+    if (effectiveAccountType == null || effectiveAccountType.isEmpty) {
+      // No profile found, user needs to complete registration
+      // Clear any stale data and redirect to welcome
+      await Storage.clearUserData();
+      if (mounted) {
+        Navigator.of(context).pushReplacementNamed('/welcome');
+      }
+      return;
+    }
+
     final userStorage = Provider.of<UserStorage>(context, listen: false);
 
     try {
+      // Load user profile based on account type
       await userStorage.loadUser(
-        accountType == 'factory' ? AccountType.factory : AccountType.seller,
+        effectiveAccountType == 'factory' ? AccountType.factory : AccountType.seller,
       );
+
+      // Fetch all sellers/factories and cache them in storage
+      if (effectiveAccountType == 'seller') {
+        await SupabaseConfig.fetchAndCacheAllSellers();
+      } else if (effectiveAccountType == 'factory') {
+        await SupabaseConfig.fetchAndCacheAllFactories();
+        // Also fetch sellers for factories to interact with
+        await SupabaseConfig.fetchAndCacheAllSellers();
+      }
     } catch (e) {
-      debugPrint('Error loading user: $e');
+      debugPrint('Error loading user or fetching data: $e');
     }
 
     if (mounted) {

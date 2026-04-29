@@ -17,7 +17,15 @@ class Storage {
   }
 
   static Future<String?> _getString(String key) async {
-    return _prefs.getString(key);
+    try {
+      return _prefs.getString(key);
+    } catch (e) {
+      final value = _prefs.get(key);
+      if (value is int) return value.toString();
+      if (value is double) return value.toString();
+      if (value is bool) return value.toString();
+      return null;
+    }
   }
 
   static Future<void> saveThemeIndex(int index) async {
@@ -26,7 +34,14 @@ class Storage {
 
   static Future<int> getThemeIndex() async {
     final value = await _getString('theme_index');
-    return int.tryParse(value ?? '0') ?? 0;
+    if (value == null) return 0;
+    final parsed = int.tryParse(value);
+    if (parsed != null) return parsed;
+    try {
+      return value as int;
+    } catch (e) {
+      return 0;
+    }
   }
 
   static Future<void> saveLanguageCode(String code) async {
@@ -71,7 +86,7 @@ class Storage {
 
   static Future<bool> getBool(String key) async {
     final value = await _getString(key);
-    return value == 'true';
+    return value == 'true' || value == '1' || value == 'true';
   }
 
   static Future<void> saveBool(String key, bool value) async {
@@ -80,7 +95,14 @@ class Storage {
 
   static Future<double> getBrightness() async {
     final value = await _getString('brightness_level');
-    return double.tryParse(value ?? '1.0') ?? 1.0;
+    if (value == null) return 1.0;
+    final parsed = double.tryParse(value);
+    if (parsed != null) return parsed;
+    try {
+      return value as double;
+    } catch (e) {
+      return 1.0;
+    }
   }
 
   static Future<void> saveBrightness(double value) async {

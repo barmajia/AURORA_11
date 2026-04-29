@@ -9,6 +9,7 @@ import 'package:aurora/storage/userStorage.dart';
 import 'package:aurora/services/api_service.dart';
 import 'package:aurora/pages/welcome/welcome.dart';
 import 'package:aurora/pages/home.dart';
+import 'package:aurora/pages/customers/customer_list.dart';
 import 'package:aurora/pages/profile/profile.dart';
 import 'package:aurora/pages/settings.dart';
 import 'package:aurora/theme/theme_provider.dart';
@@ -76,6 +77,7 @@ class AuroraApp extends StatelessWidget {
         '/profile': (context) => const ProfilePage(),
         '/welcome': (context) => const WelcomePage(),
         '/home': (context) => const Homepapge(),
+        '/customers': (context) => const CustomerListPage(),
       },
       home: const SplashScreen(),
     );

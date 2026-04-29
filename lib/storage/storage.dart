@@ -1,29 +1,29 @@
 import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vault_storage/vault_storage.dart';
 import 'package:aurora/users/users.dart';
 
 class Storage {
-  static late final SharedPreferences _prefs;
+  static late final VaultStorage _vault;
   static bool _isInitialized = false;
-
+  
   static Future<void> init() async {
     if (_isInitialized) return;
-    _prefs = await SharedPreferences.getInstance();
+    _vault = VaultStorage();
+    await _vault.init(
+      key: 'aurora_master_key',
+      alias: 'aurora_app',
+    );
     _isInitialized = true;
   }
 
   static Future<void> _saveString(String key, String value) async {
-    await _prefs.setString(key, value);
+    await _vault.write(key, value);
   }
 
   static Future<String?> _getString(String key) async {
     try {
-      return _prefs.getString(key);
+      return await _vault.read(key);
     } catch (e) {
-      final value = _prefs.get(key);
-      if (value is int) return value.toString();
-      if (value is double) return value.toString();
-      if (value is bool) return value.toString();
       return null;
     }
   }
@@ -110,14 +110,22 @@ class Storage {
   }
 
   static Future<void> clearAll() async {
-    await _prefs.clear();
+    // VaultStorage doesn't have a clear all method, clear individual keys
+    await _vault.delete('theme_index');
+    await _vault.delete('language_code');
+    await _vault.delete('seller_data');
+    await _vault.delete('factory_data');
+    await _vault.delete('user_id');
+    await _vault.delete('account_type');
+    await _vault.delete('brightness_level');
+    await _vault.delete('user_data');
   }
 
   static Future<void> clearUserData() async {
-    await _prefs.remove('seller_data');
-    await _prefs.remove('factory_data');
-    await _prefs.remove('user_id');
-    await _prefs.remove('account_type');
+    await _vault.delete('seller_data');
+    await _vault.delete('factory_data');
+    await _vault.delete('user_id');
+    await _vault.delete('account_type');
   }
 
   static Future<void> saveUser(Map<String, dynamic> userData) async {
@@ -136,6 +144,6 @@ class Storage {
   }
 
   static Future<void> clearUser() async {
-    await _prefs.remove('user_data');
+    await _vault.delete('user_data');
   }
 }

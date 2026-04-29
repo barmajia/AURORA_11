@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:provider/provider.dart';
 import 'package:aurora/users/account_type.dart';
 import 'package:aurora/storage/userStorage.dart';
 import 'package:aurora/pages/auth/sellers/signup.dart';
@@ -31,37 +31,25 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = true);
 
     try {
-      final response = await Supabase.instance.client.auth.signInWithPassword(
+      final userStorage = Provider.of<UserStorage>(context, listen: false);
+      final success = await userStorage.signIn(
         email: _emailController.text.trim(),
         password: _passwordController.text,
+        accountType: AccountType.seller,
       );
 
-      if (response.session == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid email or password.')),
-        );
-        return;
-      }
-
-      final user = response.user;
-      if (user == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Login failed. Please try again.')),
-        );
-        return;
-      }
-
-      final userStorage = UserStorage();
-      await userStorage.loadUser(AccountType.seller);
-
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Welcome back!')));
-
-      Navigator.of(context).pushReplacementNamed('/home');
+      
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Welcome back!')),
+        );
+        Navigator.of(context).pushReplacementNamed('/home');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(userStorage.error ?? 'Login failed')),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(

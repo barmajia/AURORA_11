@@ -1,30 +1,30 @@
 import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vault_storage/vault_storage.dart';
 import 'package:aurora/models/analysis/analytics.dart';
 import 'package:aurora/models/analysis/enums.dart';
 
 class AnalyticsStorage {
-  static late final SharedPreferences _prefs;
+  static late final VaultStorage _vault;
   static bool _isInitialized = false;
 
   static Future<void> init() async {
     if (_isInitialized) return;
-    _prefs = await SharedPreferences.getInstance();
+    _vault = VaultStorage();
+    await _vault.init(
+      key: 'aurora_master_key',
+      alias: 'aurora_app',
+    );
     _isInitialized = true;
   }
 
   static Future<void> _saveString(String key, String value) async {
-    await _prefs.setString(key, value);
+    await _vault.write(key, value);
   }
 
   static Future<String?> _getString(String key) async {
     try {
-      return _prefs.getString(key);
+      return await _vault.read(key);
     } catch (e) {
-      final value = _prefs.get(key);
-      if (value is int) return value.toString();
-      if (value is double) return value.toString();
-      if (value is bool) return value.toString();
       return null;
     }
   }
@@ -70,7 +70,7 @@ class AnalyticsStorage {
   }
 
   static Future<void> clearDailyAnalytics() async {
-    await _prefs.remove('daily_analytics');
+    await _vault.delete('daily_analytics');
   }
 
   static Future<void> saveSnapshot(AnalyticsSnapshot snapshot) async {
@@ -89,7 +89,7 @@ class AnalyticsStorage {
   }
 
   static Future<void> clearSnapshot() async {
-    await _prefs.remove('analytics_snapshot');
+    await _vault.delete('analytics_snapshot');
   }
 
   static Future<void> clearAll() async {

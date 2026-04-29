@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:aurora/users/users.dart';
 import 'package:aurora/users/account_type.dart';
 import 'package:aurora/storage/storage.dart';
@@ -9,10 +8,18 @@ class UserStorage extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
 
+  // In-memory cache for account type and uuid
+  AccountType? _cachedAccountType;
+  String? _cachedUuid;
+
   Users? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get isLoggedIn => _currentUser != null && _currentUser!.id.isNotEmpty;
+  
+  // Cached getters - no storage calls needed
+  AccountType? get cachedAccountType => _cachedAccountType;
+  String? get cachedUuid => _cachedUuid;
 
   Future<void> loadUser(AccountType accountType) async {
     _isLoading = true;
@@ -20,38 +27,105 @@ class UserStorage extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final supabase = Supabase.instance.client;
-      final authUser = supabase.auth.currentUser;
-
-      if (authUser == null) {
-        _currentUser = Users.zero();
-        _isLoading = false;
-        notifyListeners();
-        return;
-      }
-
-      final tableName = accountType == AccountType.factory ? 'factories' : 'sellers';
-      final response = await supabase
-          .from(tableName)
-          .select()
-          .eq('user_id', authUser.id)
-          .maybeSingle();
-
-      if (response != null) {
-        _currentUser = _mapToUser(response, accountType);
+      final localUser = await Storage.getUser();
+      if (localUser != null) {
+        _currentUser = localUser;
       } else {
-        final localUser = await Storage.getUser();
-        _currentUser = localUser ?? Users.zero();
+        _currentUser = Users.zero();
       }
-
-      await Storage.saveUser(_currentUser!.toJson());
     } catch (e) {
       _error = e.toString();
-      final localUser = await Storage.getUser();
-      _currentUser = localUser ?? Users.zero();
+      _currentUser = Users.zero();
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  Future<bool> signIn({
+    required String email,
+    required String password,
+    required AccountType accountType,
+  }) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final storedUser = await Storage.getUser();
+      
+      if (storedUser != null && 
+          storedUser.email == email && 
+          storedUser.password == password &&
+          storedUser.accountType == accountType) {
+        _currentUser = storedUser;
+        // Update in-memory cache
+        _cachedAccountType = accountType;
+        _cachedUuid = storedUser.id;
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      } else {
+        _error = 'Invalid email or password';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      _error = e.toString();
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> signUp({
+    required String email,
+    required String password,
+    required String name,
+    required AccountType accountType,
+    Map<String, dynamic>? metadata,
+  }) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      // Check if user already exists
+      final existingUser = await Storage.getUser();
+      if (existingUser != null && existingUser.email == email) {
+        _error = 'Email already registered';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+
+      final user = Users(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        email: email,
+        name: name,
+        password: password,
+        accountType: accountType,
+        phonenumber: 0,
+        createdAt: DateTime.now(),
+        isactive: true,
+        metadata: metadata ?? {},
+      );
+
+      await Storage.saveUser(user.toJson());
+      
+      // Update in-memory cache
+      _currentUser = user;
+      _cachedAccountType = accountType;
+      _cachedUuid = user.id;
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      _isLoading = false;
+      notifyListeners();
+      return false;
     }
   }
 
@@ -74,37 +148,33 @@ class UserStorage extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final supabase = Supabase.instance.client;
-      final authUser = supabase.auth.currentUser;
+      final updatedUser = Users(
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        password: user.password,
+        accountType: user.accountType,
+        phonenumber: int.tryParse(phone ?? user.phonenumber.toString()) ?? user.phonenumber,
+        createdAt: user.createdAt,
+        isactive: user.isactive,
+        metadata: {
+          ...user.metadata,
+          if (firstname != null) 'firstname': firstname,
+          if (secondName != null) 'second_name': secondName,
+          if (thirdName != null) 'thirdname': thirdName,
+          if (fourthName != null) 'fourth_name': fourthName,
+          if (location != null) 'location': location,
+          if (latitude != null) 'latitude': latitude,
+          if (longitude != null) 'longitude': longitude,
+          if (isFactory != null) 'is_factory': isFactory,
+          if (factoryLicenseUrl != null) 'factory_license_url': factoryLicenseUrl,
+          if (minOrderQuantity != null) 'min_order_quantity': minOrderQuantity,
+          if (wholesaleDiscount != null) 'wholesale_discount': wholesaleDiscount,
+        },
+      );
 
-      if (authUser == null) {
-        throw Exception('Not authenticated');
-      }
-
-      final data = {
-        'user_id': authUser.id,
-        'email': user.email,
-        'full_name': user.name,
-        'firstname': firstname,
-        'second_name': secondName,
-        'thirdname': thirdName,
-        'fourth_name': fourthName,
-        'phone': phone ?? user.phonenumber.toString(),
-        'location': location,
-        'latitude': latitude,
-        'longitude': longitude,
-        'is_factory': isFactory ?? false,
-        'factory_license_url': factoryLicenseUrl,
-        'min_order_quantity': minOrderQuantity ?? 1,
-        'wholesale_discount': wholesaleDiscount ?? 0,
-        'account_type': 'seller',
-        'updated_at': DateTime.now().toIso8601String(),
-      };
-
-      await supabase.from('sellers').upsert(data);
-
-      _currentUser = user;
-      await Storage.saveUser(user.toJson());
+      _currentUser = updatedUser;
+      await Storage.saveUser(updatedUser.toJson());
     } catch (e) {
       _error = e.toString();
     } finally {
@@ -130,36 +200,31 @@ class UserStorage extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final supabase = Supabase.instance.client;
-      final authUser = supabase.auth.currentUser;
+      final updatedUser = Users(
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        password: user.password,
+        accountType: user.accountType,
+        phonenumber: int.tryParse(phone ?? user.phonenumber.toString()) ?? user.phonenumber,
+        createdAt: user.createdAt,
+        isactive: user.isactive,
+        metadata: {
+          ...user.metadata,
+          if (companyName != null) 'company_name': companyName,
+          if (location != null) 'location': location,
+          if (locationText != null) 'location_text': locationText,
+          if (latitude != null) 'latitude': latitude,
+          if (longitude != null) 'longitude': longitude,
+          if (productionCapacity != null) 'production_capacity': productionCapacity,
+          if (specialization != null) 'specialization': specialization,
+          if (websiteUrl != null) 'website_url': websiteUrl,
+          if (businessLicenseUrl != null) 'business_license_url': businessLicenseUrl,
+        },
+      );
 
-      if (authUser == null) {
-        throw Exception('Not authenticated');
-      }
-
-      final data = {
-        'user_id': authUser.id,
-        'email': user.email,
-        'full_name': user.name,
-        'company_name': companyName,
-        'phone': phone ?? user.phonenumber.toString(),
-        'location': location,
-        'location_text': locationText,
-        'latitude': latitude != null ? latitude.toInt() : null,
-        'longitude': longitude != null ? longitude.toInt() : null,
-        'production_capacity': productionCapacity,
-        'specialization': specialization,
-        'website_url': websiteUrl,
-        'business_license_url': businessLicenseUrl,
-        'account_type': 'factory',
-        'is_factory': true,
-        'updated_at': DateTime.now().toIso8601String(),
-      };
-
-      await supabase.from('factories').upsert(data);
-
-      _currentUser = user;
-      await Storage.saveUser(user.toJson());
+      _currentUser = updatedUser;
+      await Storage.saveUser(updatedUser.toJson());
     } catch (e) {
       _error = e.toString();
     } finally {
@@ -168,96 +233,18 @@ class UserStorage extends ChangeNotifier {
     }
   }
 
-  Future<Users?> getSellerById(String userId) async {
-    try {
-      final supabase = Supabase.instance.client;
-      final response = await supabase
-          .from('sellers')
-          .select()
-          .eq('user_id', userId)
-          .maybeSingle();
-
-      if (response != null) {
-        return _mapToUser(response, AccountType.seller);
-      }
-      return null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  Future<Users?> getFactoryById(String userId) async {
-    try {
-      final supabase = Supabase.instance.client;
-      final response = await supabase
-          .from('factories')
-          .select()
-          .eq('user_id', userId)
-          .maybeSingle();
-
-      if (response != null) {
-        return _mapToUser(response, AccountType.factory);
-      }
-      return null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  Future<List<Users>> getAllSellers({int limit = 50}) async {
-    try {
-      final supabase = Supabase.instance.client;
-      final response = await supabase
-          .from('sellers')
-          .select()
-          .eq('is_verified', true)
-          .order('created_at', ascending: false)
-          .limit(limit);
-
-      return response.map((e) => _mapToUser(e, AccountType.seller)).toList();
-    } catch (e) {
-      return [];
-    }
-  }
-
-  Future<List<Users>> getAllFactories({int limit = 50}) async {
-    try {
-      final supabase = Supabase.instance.client;
-      final response = await supabase
-          .from('factories')
-          .select()
-          .eq('is_verified', true)
-          .order('created_at', ascending: false)
-          .limit(limit);
-
-      return response.map((e) => _mapToUser(e, AccountType.factory)).toList();
-    } catch (e) {
-      return [];
-    }
-  }
-
   Future<void> logout() async {
     _currentUser = Users.zero();
+    // Clear in-memory cache
+    _cachedAccountType = null;
+    _cachedUuid = null;
     await Storage.clearUser();
     notifyListeners();
   }
 
-  Users _mapToUser(Map<String, dynamic> data, AccountType accountType) {
-    return Users(
-      id: data['user_id']?.toString() ?? '',
-      email: data['email'] ?? '',
-      name: data['full_name'] ?? data['name'] ?? '',
-      password: '',
-      accountType: accountType,
-      phonenumber: int.tryParse(data['phone']?.toString() ?? '0') ?? 0,
-      createdAt: data['created_at'] != null
-          ? DateTime.tryParse(data['created_at'])
-          : DateTime.now(),
-      lastLoginAt: data['updated_at'] != null
-          ? DateTime.tryParse(data['updated_at'])
-          : null,
-      isactive: data['is_verified'] ?? true,
-      metadata: data,
-    );
+  /// Clear cached data when app is closed/paused
+  void clearCache() {
+    _cachedAccountType = null;
+    _cachedUuid = null;
   }
 }

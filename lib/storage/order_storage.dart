@@ -1,25 +1,29 @@
 import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vault_storage/vault_storage.dart';
 import 'package:aurora/models/customers/customerbill.dart';
 import 'package:aurora/models/analysis/enums.dart';
 
 class OrderStorage {
-  static late final SharedPreferences _prefs;
+  static late final VaultStorage _vault;
   static bool _isInitialized = false;
 
   static Future<void> init() async {
     if (_isInitialized) return;
-    _prefs = await SharedPreferences.getInstance();
+    _vault = VaultStorage();
+    await _vault.init(
+      key: 'aurora_master_key',
+      alias: 'aurora_app',
+    );
     _isInitialized = true;
   }
 
   static Future<void> _saveString(String key, String value) async {
-    await _prefs.setString(key, value);
+    await _vault.write(key, value);
   }
 
   static Future<String?> _getString(String key) async {
     try {
-      return _prefs.getString(key);
+      return await _vault.read(key);
     } catch (e) {
       return null;
     }
@@ -84,7 +88,7 @@ class OrderStorage {
   }
 
   static Future<void> clearOrders() async {
-    await _prefs.remove('orders_list');
+    await _vault.delete('orders_list');
   }
 
   static Future<double> getTotalRevenue() async {

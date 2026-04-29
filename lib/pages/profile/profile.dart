@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:aurora/storage/userStorage.dart';
+import 'package:aurora/storage/storage.dart';
 import 'package:aurora/users/account_type.dart';
+import 'package:aurora/supabase/supabase_config.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -13,13 +16,44 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+  List<Map<String, dynamic>> _cachedSellers = [];
+  List<Map<String, dynamic>> _cachedFactories = [];
+  bool _isLoadingData = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final userStorage = Provider.of<UserStorage>(context, listen: false);
       userStorage.loadUser(AccountType.seller);
+      _loadCachedData();
     });
+  }
+
+  Future<void> _loadCachedData() async {
+    setState(() => _isLoadingData = true);
+    
+    try {
+      // Load cached sellers and factories from storage
+      _cachedSellers = await SupabaseConfig.getCachedSellers();
+      _cachedFactories = await SupabaseConfig.getCachedFactories();
+      
+      // If no cached data, fetch from Supabase
+      if (_cachedSellers.isEmpty) {
+        await SupabaseConfig.fetchAndCacheAllSellers();
+        _cachedSellers = await SupabaseConfig.getCachedSellers();
+      }
+      if (_cachedFactories.isEmpty) {
+        await SupabaseConfig.fetchAndCacheAllFactories();
+        _cachedFactories = await SupabaseConfig.getCachedFactories();
+      }
+    } catch (e) {
+      debugPrint('Error loading cached data: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingData = false);
+      }
+    }
   }
 
   String _getAccountTypeName(AccountType? accountType) {
@@ -50,9 +84,9 @@ class _ProfilePageState extends State<ProfilePage> {
     );
 
     if (confirm == true && mounted) {
-      await Supabase.instance.client.auth.signOut();
+      await SupabaseConfig.signOut();
       if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/login');
+        Navigator.of(context).pushReplacementNamed('/welcome');
       }
     }
   }
@@ -74,6 +108,10 @@ class _ProfilePageState extends State<ProfilePage> {
       appBar: AppBar(
         title: const Text('Profile'),
         actions: [
+          IconButton(
+            icon: _isLoadingData ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.refresh),
+            onPressed: _isLoadingData ? null : _loadCachedData,
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () => Navigator.of(context).pushNamed('/settings'),
@@ -154,6 +192,16 @@ class _ProfilePageState extends State<ProfilePage> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
+                      ),
+                      // Display cached data summary
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _buildDataBadge('Sellers: ${_cachedSellers.length}', Icons.store),
+                          const SizedBox(width: 16),
+                          _buildDataBadge('Factories: ${_cachedFactories.length}', Icons.factory),
+                        ],
                       ),
                     ],
                   ),
@@ -335,6 +383,31 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDataBadge(String label, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 16),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],

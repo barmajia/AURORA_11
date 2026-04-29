@@ -3,48 +3,38 @@ import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:aurora/storage/storage.dart';
-import 'package:aurora/storage/userStorage.dart';
-import 'package:aurora/pages/welcome/welcome.dart';
-import 'package:aurora/pages/home.dart';
-import 'package:aurora/pages/customers/customer_list.dart';
-import 'package:aurora/pages/profile/profile.dart';
-import 'package:aurora/pages/settings.dart';
-import 'package:aurora/theme/theme_provider.dart';
-import 'package:aurora/locale/locale_provider.dart';
-import 'package:aurora/l10n/app_localizations.dart';
-import 'package:aurora/users/account_type.dart';
+import 'package:aurora/core/storage.dart';
+import 'package:aurora/core/config/supabase_config.dart';
+import 'package:aurora/core/supabase/supabase_config.dart';
+import 'package:aurora/core/userStorage.dart';
+import 'package:aurora/core/theme/theme_provider.dart';
+import 'package:aurora/core/locale/locale_provider.dart';
+import 'package:aurora/core/l10n/app_localizations.dart';
+import 'package:aurora/core/account_type.dart';
+import 'package:aurora/presentation/welcome/pages/welcome.dart';
+import 'package:aurora/presentation/home/home.dart';
+import 'package:aurora/presentation/customers/pages/customer_list.dart';
+import 'package:aurora/presentation/products/pages/product_list.dart';
+import 'package:aurora/presentation/profile/pages/profile.dart';
+import 'package:aurora/presentation/settings/pages/settings.dart';
+import 'package:aurora/presentation/auth/sellers/login.dart';
+import 'package:aurora/presentation/auth/sellers/signup.dart';
+import 'package:aurora/presentation/auth/factories/login.dart' as factory_auth;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   await Storage.init();
-
-  if (!kIsWeb) {
-    await _requestLocationPermission();
-  }
-
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        ChangeNotifierProvider(create: (_) => LocaleProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()..init()),
+        ChangeNotifierProvider(create: (_) => LocaleProvider()..init()),
         ChangeNotifierProvider(create: (_) => UserStorage()),
+        ChangeNotifierProvider(create: (_) => SupabaseProvider()),
       ],
       child: const AuroraApp(),
     ),
   );
-}
-
-Future<void> _requestLocationPermission() async {
-  try {
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    await Permission.location.request();
-    await Permission.locationAlways.request();
-  } catch (e) {}
 }
 
 class AuroraApp extends StatelessWidget {
@@ -68,6 +58,10 @@ class AuroraApp extends StatelessWidget {
         '/welcome': (context) => const WelcomePage(),
         '/home': (context) => const Homepapge(),
         '/customers': (context) => const CustomerListPage(),
+        '/products': (context) => const ProductListPage(),
+        '/seller-login': (context) => const SellerLoginPage(),
+        '/seller-signup': (context) => const SellerSignupPage(),
+        '/factory-login': (context) => const factory_auth.FactoryLoginPage(),
       },
       home: const SplashScreen(),
     );
@@ -76,17 +70,40 @@ class AuroraApp extends StatelessWidget {
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
-
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with WidgetsBindingObserver {
+class _SplashScreenState extends State<SplashScreen>
+    with WidgetsBindingObserver {
+  bool _supabaseReady = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _deferredInit();
     _checkAuthAndNavigate();
+  }
+
+  Future<void> _deferredInit() async {
+    final supabaseProvider = Provider.of<SupabaseProvider>(context, listen: false);
+    await supabaseProvider.init(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey);
+    if (mounted) setState(() => _supabaseReady = true);
+    if (!kIsWeb) {
+      _requestLocationPermission();
+    }
+  }
+
+  Future<void> _requestLocationPermission() async {
+    try {
+      await Future.delayed(const Duration(seconds: 2));
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied)
+        permission = await Geolocator.requestPermission();
+      await Permission.location.request();
+      await Permission.locationAlways.request();
+    } catch (e) {}
   }
 
   @override
@@ -98,34 +115,24 @@ class _SplashScreenState extends State<SplashScreen> with WidgetsBindingObserver
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final userStorage = Provider.of<UserStorage>(context, listen: false);
-    
-    // Clear cached data when app is paused (app closed/minimized)
-    if (state == AppLifecycleState.paused || 
+    if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       userStorage.clearCache();
     }
   }
 
   Future<void> _checkAuthAndNavigate() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-
+    while (!_supabaseReady) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
     final userStorage = Provider.of<UserStorage>(context, listen: false);
     final currentUser = userStorage.currentUser;
     final isLoggedIn = userStorage.isLoggedIn;
-
-    // Wait a bit for user data to load from vault
-    await Future.delayed(const Duration(milliseconds: 300));
-
     if (!isLoggedIn || currentUser == null) {
-      if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/welcome');
-      }
+      if (mounted) Navigator.of(context).pushReplacementNamed('/welcome');
       return;
     }
-
-    if (mounted) {
-      Navigator.of(context).pushReplacementNamed('/home');
-    }
+    if (mounted) Navigator.of(context).pushReplacementNamed('/home');
   }
 
   @override
@@ -135,11 +142,7 @@ class _SplashScreenState extends State<SplashScreen> with WidgetsBindingObserver
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.storefront,
-              size: 100,
-              color: Color(0xFF6366F1),
-            ),
+            const Icon(Icons.storefront, size: 100, color: Color(0xFF6366F1)),
             const SizedBox(height: 24),
             const Text(
               'Aurora',

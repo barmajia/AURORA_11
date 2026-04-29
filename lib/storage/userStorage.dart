@@ -159,7 +159,7 @@ class UserStorage extends ChangeNotifier {
       await supabase.from('factories').upsert(data);
 
       _currentUser = user;
-      await Storage.saveUser(user);
+      await Storage.saveUser(user.toJson());
     } catch (e) {
       _error = e.toString();
     } finally {

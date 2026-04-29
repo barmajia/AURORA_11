@@ -15,6 +15,7 @@ import 'package:aurora/theme/theme_provider.dart';
 import 'package:aurora/locale/locale_provider.dart';
 import 'package:aurora/l10n/app_localizations.dart';
 import 'package:aurora/supabase/supabase_auth.dart';
+import 'package:aurora/users/account_type.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -109,12 +110,14 @@ class _SplashScreenState extends State<SplashScreen> {
     }
 
     final accountType = await Storage.getAccountType();
-    final apiService = ApiService();
+    final userStorage = Provider.of<UserStorage>(context, listen: false);
 
-    if (accountType == 'factory') {
-      await apiService.fetchFactoryProfile();
-    } else if (accountType == 'seller') {
-      await apiService.fetchSellerProfile();
+    try {
+      await userStorage.loadUser(
+        accountType == 'factory' ? AccountType.factory : AccountType.seller,
+      );
+    } catch (e) {
+      debugPrint('Error loading user: $e');
     }
 
     if (mounted) {

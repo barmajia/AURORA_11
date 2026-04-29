@@ -1,25 +1,23 @@
 import 'dart:convert';
-import 'package:vault_storage/vault_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aurora/users/users.dart';
 
 class Storage {
-  static late final IVaultStorage _vault;
+  static late final SharedPreferences _prefs;
   static bool _isInitialized = false;
 
   static Future<void> init() async {
     if (_isInitialized) return;
-    final storage = VaultStorage.create();
-    await storage.init();
-    _vault = storage;
+    _prefs = await SharedPreferences.getInstance();
     _isInitialized = true;
   }
 
   static Future<void> _saveString(String key, String value) async {
-    await _vault.saveNormal(key: key, value: value);
+    await _prefs.setString(key, value);
   }
 
   static Future<String?> _getString(String key) async {
-    return await _vault.get<String>(key, isSecure: false);
+    return _prefs.getString(key);
   }
 
   static Future<void> saveThemeIndex(int index) async {
@@ -90,14 +88,14 @@ class Storage {
   }
 
   static Future<void> clearAll() async {
-    await _vault.clearNormal();
+    await _prefs.clear();
   }
 
   static Future<void> clearUserData() async {
-    await _vault.delete('seller_data');
-    await _vault.delete('factory_data');
-    await _vault.delete('user_id');
-    await _vault.delete('account_type');
+    await _prefs.remove('seller_data');
+    await _prefs.remove('factory_data');
+    await _prefs.remove('user_id');
+    await _prefs.remove('account_type');
   }
 
   static Future<void> saveUser(Map<String, dynamic> userData) async {
@@ -116,6 +114,6 @@ class Storage {
   }
 
   static Future<void> clearUser() async {
-    await _vault.delete('user_data');
+    await _prefs.remove('user_data');
   }
 }
